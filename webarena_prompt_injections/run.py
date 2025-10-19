@@ -3,6 +3,7 @@ import click
 import subprocess
 import json
 from collections import defaultdict
+from pathlib import Path
 from constants import (
     PromptInjectionFormat,
     GitlabUserGoals,
@@ -21,18 +22,20 @@ def run_single_end_to_end(
         results_dict,  # to save and accumulate results
         output_dir_idx=0,  # to save logs for each run separately
     ):
-    if output_dir[-1] == '/':
-        output_dir = output_dir + str(output_dir_idx) + '/'
-    else:
-        output_dir = output_dir + '/' + str(output_dir_idx) + '/'
+    base_output_path = Path(output_dir)
+    final_output_path = (base_output_path / str(output_dir_idx)).resolve()
+
+    script_path = Path(__file__).resolve().parent / "scripts" / "run_end_to_end.sh"
+    config_path = Path(config).resolve()
+    system_prompt_path = Path(system_prompt).resolve()
 
     command = [
         'bash',
-        'scripts/run_end_to_end.sh',
-        output_dir,
+        str(script_path),
+        str(final_output_path),
         model,
-        system_prompt,
-        config,
+        str(system_prompt_path),
+        str(config_path),
         str(user_goal_idx),
         injection_format,
         output_format
@@ -69,7 +72,7 @@ def run_all(config,
             system_prompt, 
             output_dir, 
             output_format, 
-            run_single,
+            run_limit,
             user_goal_start):
     gitlab_user_goals = GitlabUserGoals("")
     reddit_user_goals = RedditUserGoals("")
@@ -79,11 +82,17 @@ def run_all(config,
                              PromptInjectionFormat.GOAL_HIJACKING_URL_INJECTION]
     results_dict = defaultdict(int)
 
+    runs_executed = 0
+    should_limit = run_limit is not None and run_limit > 0
+
     for user_goal_idx in range(user_goal_start, user_goals_len):
         print(f"$$$$$$$ Running {user_goal_idx+1} our of {user_goals_len} user goals, current one: "
               f"(gitlab) '{gitlab_user_goals.GOALS[user_goal_idx]}', "
               f"(reddit) '{reddit_user_goals.GOALS[user_goal_idx]}'")
         for i, injection_format in enumerate(injection_format_list):
+            if should_limit and runs_executed >= run_limit:
+                print(f"\n!!! Reached requested run limit ({run_limit}). Terminating")
+                return
             print(f"$$$$$$$ Running {i+1} out of {len(injection_format_list)} injection formats, current one: {injection_format}")
 
             run_single_end_to_end(config=config,
@@ -99,9 +108,9 @@ def run_all(config,
             print(f"\nAccumulated results after user_goal_idx = {user_goal_idx+1} and injection_format_idx = {i+1}: ")
             for key, value in results_dict.items():
                 print(f"{key} = {value}")
-
-            if run_single:
-                print("\n!!! Running a single user goal and a single injection format is requested. Terminating")
+            runs_executed += 1
+            if should_limit and runs_executed >= run_limit:
+                print(f"\n!!! Reached requested run limit ({run_limit}). Terminating")
                 return
     
     print("\n\nDone running all experiments! Final results:")
@@ -118,7 +127,7 @@ def run_all(config,
 )
 @click.option(
     "--model",
-    type=click.Choice(['gpt-4o', 'gpt-4o-mini', 'claude-35', 'claude-37'], case_sensitive=False),
+    type=click.Choice(['gpt-4o', 'gpt-4o-mini', 'claude-35', 'claude-37', 'deepseek-v3-250324'], case_sensitive=False),
     default="gpt-4o",
     help="backbone LLM. Available options: gpt-4o, gpt-4o-mini, claude-35, claude-37",
 )
@@ -141,10 +150,11 @@ def run_all(config,
     help="Format of the agentic scaffolding: webarena (default), claude, gpt_web_tools",
 )
 @click.option(
-    "--run-single",
-    is_flag=True,
-    default=False,
-    help="whether to test only a single user goal and a single injection format",
+    "--run-limit",
+    type=int,
+    default=3,
+    show_default=True,
+    help="maximum number of (user_goal, injection_format) combinations to execute; set to 0 or negative to run all",
 )
 @click.option(
     "--user_goal_start",
@@ -157,7 +167,7 @@ def main(config,
          system_prompt, 
          output_dir, 
          output_format, 
-         run_single, 
+         run_limit, 
          user_goal_start):
     print("Arguments provided to run.py: \n", locals(), "\n\n")
     run_all(config=config, 
@@ -165,7 +175,7 @@ def main(config,
             system_prompt=system_prompt, 
             output_dir=output_dir, 
             output_format=output_format, 
-            run_single=run_single,
+            run_limit=run_limit,
             user_goal_start=user_goal_start)
 
 

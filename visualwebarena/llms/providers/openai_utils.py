@@ -29,18 +29,22 @@ if "AZURE_API_ENDPOINT" in os.environ and "AZURE_API_KEY" in os.environ:
         api_version=api_version,
     )
 else:
-    if "OPENAI_API_BASE" not in os.environ:
-        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    api_base = os.environ.get("OPENAI_API_BASE")
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    if api_base:
+        if not api_key:
+            print("WARNING: OPENAI_API_BASE set but OPENAI_API_KEY missing; falling back to 'EMPTY'.")
+            api_key = "EMPTY"
+
+        client = OpenAI(api_key=api_key, base_url=api_base)
+        aclient = AsyncOpenAI(api_key=api_key, base_url=api_base)
     else:
-        # Used for running vllm models.
-        print("WARNING: Using OPENAI_API_KEY=EMPTY")
-        client = OpenAI(
-            api_key="EMPTY", base_url=os.environ["OPENAI_API_BASE"]
-        )
-        aclient = AsyncOpenAI(
-            api_key="EMPTY", base_url=os.environ["OPENAI_API_BASE"]
-        )
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY must be set when using OpenAI provider.")
+
+        client = OpenAI(api_key=api_key)
+        aclient = AsyncOpenAI(api_key=api_key)
 
 
 from tqdm.asyncio import tqdm_asyncio
@@ -294,8 +298,8 @@ def generate_from_openai_chat_completion(
     context_length: int,
     stop_token: str | None = None,
 ) -> str:
-    if "OPENAI_API_BASE" in os.environ:
-        assert "llama" in model.lower()
+    # if "OPENAI_API_BASE" in os.environ:
+    #     assert "llama" in model.lower()
     if "AZURE_API_KEY" not in os.environ:
         if "OPENAI_API_KEY" not in os.environ:
             raise ValueError(

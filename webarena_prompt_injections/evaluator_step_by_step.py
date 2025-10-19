@@ -542,7 +542,14 @@ def main(log_folder, task_folder, format, model):
             api_version=api_version,
         )
     elif "OPENAI_API_KEY" in os.environ:
-        client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        api_base = os.environ.get("OPENAI_API_BASE")
+        if api_base:
+            client = AsyncOpenAI(
+                api_key=os.environ["OPENAI_API_KEY"],
+                base_url=api_base,
+            )
+        else:
+            client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
     else:
         raise ValueError("Missing OpenAI API key")
 

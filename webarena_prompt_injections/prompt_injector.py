@@ -624,7 +624,7 @@ class WebArenaPromptInjector:
 @click.option(
     "--model",
     type=click.Choice(
-        ["gpt-4o", "gpt-4o-mini", "claude-35", "claude-37"], case_sensitive=False
+        ["gpt-4o", "gpt-4o-mini", "claude-35", "claude-37", 'deepseek-v3-250324'], case_sensitive=False
     ),
     default="gpt-4o",
     help="backbone LLM. Available options: gpt-4o, gpt-4o-mini, claude-35, claude-37",
