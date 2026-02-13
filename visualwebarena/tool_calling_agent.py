@@ -15,7 +15,13 @@ from tool_calling_utils import (
 
 
 class GPTWebAgent:
-    def __init__(self, model: str, filepath_to_trace_log: str):
+    def __init__(
+        self,
+        model: str,
+        filepath_to_trace_log: str,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ):
         if "AZURE_API_ENDPOINT" in os.environ and "AZURE_API_KEY" in os.environ:
             api_version = "2024-10-21" if "AZURE_API_VERSION" not in os.environ else os.environ["AZURE_API_VERSION"]
             client = AzureOpenAI(
@@ -30,6 +36,8 @@ class GPTWebAgent:
         self.client = client
         self.model = model
         self.tools_definitions = WEB_TOOLS_DEFINITION
+        self.temperature = temperature
+        self.seed = seed
 
         self.browser_env = ScriptBrowserEnv(
             headless=True,
@@ -61,11 +69,16 @@ class GPTWebAgent:
     def _call_model(self, messages: list[dict]):
 
         try:
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self.tools_definitions,
-            )
+            kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "tools": self.tools_definitions,
+            }
+            if self.temperature is not None:
+                kwargs["temperature"] = float(self.temperature)
+            if self.seed is not None:
+                kwargs["seed"] = int(self.seed)
+            completion = self.client.chat.completions.create(**kwargs)
             print(
                 f"Received model response. Used {completion.usage.prompt_tokens} prompt tokens and {completion.usage.completion_tokens} completion tokens"
             )
@@ -242,6 +255,18 @@ def _parse_response_to_json(response_message):
 @click.option("--webarena_config_path", type=str, help="path to the json config describing the task")
 @click.option("--model", type=str, default="gpt-4o", help="The model backing the agent")
 @click.option(
+    "--temperature",
+    type=float,
+    default=None,
+    help="Optional sampling temperature (default: API default).",
+)
+@click.option(
+    "--seed",
+    type=int,
+    default=None,
+    help="Optional sampling seed (default: unset).",
+)
+@click.option(
     "--trace-log-filepath",
     type=str,
     default="/tmp/gpt_text_loop_agent_logs.jsonl",
@@ -259,6 +284,8 @@ def _parse_response_to_json(response_message):
 def main(
     webarena_config_path,
     model,
+    temperature,
+    seed,
     trace_log_filepath,
     max_actions,
     max_observations_to_keep,
@@ -297,6 +324,8 @@ def main(
     with GPTWebAgent(
         model,
         trace_log_filepath,
+        temperature=temperature,
+        seed=seed,
     ) as agent:
         agent.loop(
             start_url=start_url,
