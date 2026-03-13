@@ -47,6 +47,18 @@ def _apply_step_wise_defense(text: str, defense_mode: str) -> str:
     return text
 
 
+def _normalize_tool_call_args(tool_name: str, args: dict[str, object]) -> dict[str, object]:
+    normalized_args = dict(args)
+    if tool_name in {"click", "type", "hover"}:
+        if "id" in normalized_args and "element_id" not in normalized_args:
+            normalized_args["element_id"] = normalized_args.pop("id")
+        if "element_id" in normalized_args and not isinstance(
+            normalized_args["element_id"], str
+        ):
+            normalized_args["element_id"] = str(normalized_args["element_id"])
+    return normalized_args
+
+
 class GPTWebAgent:
     def __init__(
         self,
@@ -163,7 +175,17 @@ class GPTWebAgent:
                 )
             ]
 
-        args = json.loads(tool_call["function"]["arguments"])
+        try:
+            args = json.loads(tool_call["function"]["arguments"])
+        except json.JSONDecodeError as e:
+            return [self._tool_message(tool_call["id"], f"ERROR: {e}")]
+        if not isinstance(args, dict):
+            return [
+                self._tool_message(
+                    tool_call["id"], "ERROR: Tool arguments must be a JSON object."
+                )
+            ]
+        args = _normalize_tool_call_args(tool_name, args)
 
         if tool_name == "stop":
             return [{"role": "stop", "answer": args["answer"]}]
@@ -171,7 +193,7 @@ class GPTWebAgent:
         create_action_function = TOOL_NAME_TO_CREATE_ACTION_FUNCTION[tool_name]
         try:
             action = create_action_function(**args)
-        except TypeError as e:
+        except Exception as e:
             return [self._tool_message(tool_call["id"], f"ERROR: {e}")]
 
         browser_execution_result = self.browser_env.step(action)
